@@ -2,17 +2,17 @@ import { router } from 'expo-router';
 import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 const OPTIONS = [
-  { label: '🔍 Search', route: '/search', sub: 'Search by name, brand, color' },
-  { label: '📊 Monthly recap', route: '/recap', sub: 'Stats and insights' },
-  { label: '🛍️ Wishlist', route: '/wishlist', sub: 'Items you want to buy' },
-  { label: '📅 Outfit calendar', route: '/calendar', sub: 'See what you wore each day' },
+  { label: '🧺 Laundry tracker', route: '/laundry', sub: 'Track clean and dirty items' },
+  { label: '🧳 Trip packing', route: '/pack', sub: 'Pack from your closet' },
+  { label: '👔 My closets', route: '/closets', sub: 'Manage multiple closets' },
+  { label: '📈 Wear tracker', route: '/tracker', sub: 'See your most worn items' },
 ];
 
-export default function ExploreScreen() {
+export default function MoreScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Explore</Text>
+        <Text style={styles.title}>More</Text>
       </View>
       <ScrollView contentContainerStyle={styles.list}>
         {OPTIONS.map(o => (
