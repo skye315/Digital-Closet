@@ -24,6 +24,7 @@ export default function OutfitsScreen() {
   const [selectedTag, setSelectedTag] = useState('Casual');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeTag, setActiveTag] = useState('All');
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -39,10 +40,6 @@ export default function OutfitsScreen() {
     await AsyncStorage.setItem('outfits', JSON.stringify(updated));
   };
 
-  const saveClothes = async (updated: ClothingItem[]) => {
-    await AsyncStorage.setItem('closet_items', JSON.stringify(updated));
-  };
-
   const toggleItem = (id: string) => {
     setSelectedIds(prev =>
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
@@ -52,35 +49,31 @@ export default function OutfitsScreen() {
   const saveOutfit = () => {
     if (!outfitName.trim()) { Alert.alert('Name required', 'Please name this outfit.'); return; }
     if (selectedIds.length === 0) { Alert.alert('No items', 'Please select at least one item.'); return; }
-    const newOutfit: Outfit = {
-      id: Date.now().toString(),
-      name: outfitName.trim(),
-      tag: selectedTag,
-      itemIds: selectedIds,
-      wornCount: 0,
-    };
-    const updated = [newOutfit, ...outfits];
-    setOutfits(updated);
-    saveOutfits(updated);
+
+    if (isEditing && selectedOutfit) {
+      const updated = outfits.map(o =>
+        o.id === selectedOutfit.id
+          ? { ...o, name: outfitName.trim(), tag: selectedTag, itemIds: selectedIds }
+          : o
+      );
+      setOutfits(updated);
+      saveOutfits(updated);
+    } else {
+      const newOutfit: Outfit = {
+        id: Date.now().toString(),
+        name: outfitName.trim(),
+        tag: selectedTag,
+        itemIds: selectedIds,
+        wornCount: 0,
+      };
+      const updated = [newOutfit, ...outfits];
+      setOutfits(updated);
+      saveOutfits(updated);
+    }
     setModalVisible(false);
     setOutfitName('');
     setSelectedIds([]);
-  };
-
-  const logWear = (outfit: Outfit) => {
-    const today = new Date();
-    const dateStr = `${today.toLocaleString('default', { month: 'short' })} ${today.getDate()}`;
-    const updatedOutfits = outfits.map(o =>
-      o.id === outfit.id ? { ...o, wornCount: o.wornCount + 1, lastWorn: dateStr } : o
-    );
-    setOutfits(updatedOutfits);
-    saveOutfits(updatedOutfits);
-    const updatedClothes = clothes.map(c =>
-      outfit.itemIds.includes(c.id) ? { ...c, wornCount: c.wornCount + 1 } : c
-    );
-    setClothes(updatedClothes);
-    saveClothes(updatedClothes);
-    setSelectedOutfit({ ...outfit, wornCount: outfit.wornCount + 1, lastWorn: dateStr });
+    setIsEditing(false);
   };
 
   const deleteOutfit = (id: string) => {
@@ -131,7 +124,13 @@ export default function OutfitsScreen() {
         <View style={styles.headerPill}>
           <Text style={styles.headerPillText}>Search My Outfits</Text>
         </View>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setModalVisible(true)}>
+        <TouchableOpacity style={styles.addBtn} onPress={() => {
+          setIsEditing(false);
+          setOutfitName('');
+          setSelectedIds([]);
+          setSelectedTag('Casual');
+          setModalVisible(true);
+        }}>
           <Text style={styles.addBtnText}>+</Text>
         </TouchableOpacity>
       </View>
@@ -166,6 +165,7 @@ export default function OutfitsScreen() {
         }
       />
 
+      {/* Detail Modal */}
       <Modal visible={detailModalVisible} animationType="slide" transparent>
         <View style={styles.detailOverlay}>
           <View style={styles.detailSheet}>
@@ -200,17 +200,14 @@ export default function OutfitsScreen() {
             </View>
 
             <View style={styles.detailBtns}>
-              <TouchableOpacity style={styles.detailBtn} onPress={() => selectedOutfit && logWear(selectedOutfit)}>
-                <Text style={styles.detailBtnText}>Worn</Text>
-              </TouchableOpacity>
               <TouchableOpacity style={styles.detailBtn} onPress={() => {
+                if (!selectedOutfit) return;
+                setIsEditing(true);
+                setOutfitName(selectedOutfit.name);
+                setSelectedTag(selectedOutfit.tag);
+                setSelectedIds(selectedOutfit.itemIds);
                 setDetailModalVisible(false);
-                setTimeout(() => {
-                  setSelectedIds(selectedOutfit?.itemIds || []);
-                  setOutfitName(selectedOutfit?.name || '');
-                  setSelectedTag(selectedOutfit?.tag || 'Casual');
-                  setModalVisible(true);
-                }, 300);
+                setTimeout(() => setModalVisible(true), 300);
               }}>
                 <Text style={styles.detailBtnText}>Edit</Text>
               </TouchableOpacity>
@@ -226,10 +223,11 @@ export default function OutfitsScreen() {
         </View>
       </Modal>
 
+      {/* Add/Edit Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.overlay}>
           <View style={styles.sheet}>
-            <Text style={styles.sheetTitle}>New outfit</Text>
+            <Text style={styles.sheetTitle}>{isEditing ? 'Edit outfit' : 'New outfit'}</Text>
             <TextInput
               style={styles.input}
               placeholder="Outfit name"
@@ -267,9 +265,9 @@ export default function OutfitsScreen() {
               {clothes.length === 0 && <Text style={styles.noClothes}>Add clothes to your closet first</Text>}
             </ScrollView>
             <TouchableOpacity style={styles.saveBtn} onPress={saveOutfit}>
-              <Text style={styles.saveBtnText}>Save outfit</Text>
+              <Text style={styles.saveBtnText}>{isEditing ? 'Save changes' : 'Save outfit'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => { setModalVisible(false); setIsEditing(false); }}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
           </View>

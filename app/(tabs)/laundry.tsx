@@ -1,14 +1,10 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
-    Alert,
-    FlatList, Image,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  View, Text, StyleSheet, SafeAreaView, TouchableOpacity,
+  FlatList, Image, Alert
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold } from '@expo-google-fonts/playfair-display';
 
 type ClothingItem = {
   id: string;
@@ -16,11 +12,13 @@ type ClothingItem = {
   label: string;
   brand: string;
   category: string;
-  color: string;
+  colors: string[];
   wornCount: number;
+  wornSinceWash: number;
 };
 
 export default function LaundryScreen() {
+  const [fontsLoaded] = useFonts({ PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold });
   const [items, setItems] = useState<ClothingItem[]>([]);
   const [dirtyIds, setDirtyIds] = useState<string[]>([]);
   const [activeFilter, setActiveFilter] = useState<'all' | 'dirty' | 'clean'>('all');
@@ -29,7 +27,14 @@ export default function LaundryScreen() {
     const load = async () => {
       const saved = await AsyncStorage.getItem('closet_items');
       const dirty = await AsyncStorage.getItem('dirty_items');
-      if (saved) setItems(JSON.parse(saved));
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const migrated = parsed.map((item: any) => ({
+          ...item,
+          wornSinceWash: item.wornSinceWash || 0,
+        }));
+        setItems(migrated);
+      }
       if (dirty) setDirtyIds(JSON.parse(dirty));
     };
     load();
@@ -39,7 +44,7 @@ export default function LaundryScreen() {
     await AsyncStorage.setItem('dirty_items', JSON.stringify(updated));
   };
 
-  const toggleDirty = (id: string) => {
+  const toggleDirty = async (id: string) => {
     const item = items.find(i => i.id === id);
     const isDirty = dirtyIds.includes(id);
     Alert.alert(
@@ -51,12 +56,24 @@ export default function LaundryScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: isDirty ? 'Mark clean' : 'Mark dirty',
-          onPress: () => {
+          onPress: async () => {
             const updated = isDirty
               ? dirtyIds.filter(i => i !== id)
               : [...dirtyIds, id];
             setDirtyIds(updated);
             saveDirty(updated);
+
+            if (isDirty) {
+              const savedItems = await AsyncStorage.getItem('closet_items');
+              if (savedItems) {
+                const parsed = JSON.parse(savedItems);
+                const updatedItems = parsed.map((i: any) =>
+                  i.id === id ? { ...i, wornSinceWash: 0 } : i
+                );
+                await AsyncStorage.setItem('closet_items', JSON.stringify(updatedItems));
+                setItems(updatedItems);
+              }
+            }
           }
         }
       ]
@@ -67,9 +84,18 @@ export default function LaundryScreen() {
     Alert.alert('Wash all', 'Mark all dirty items as clean?', [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Wash all', onPress: () => {
+        text: 'Wash all', onPress: async () => {
           setDirtyIds([]);
           saveDirty([]);
+          const savedItems = await AsyncStorage.getItem('closet_items');
+          if (savedItems) {
+            const parsed = JSON.parse(savedItems);
+            const updatedItems = parsed.map((i: any) =>
+              dirtyIds.includes(i.id) ? { ...i, wornSinceWash: 0 } : i
+            );
+            await AsyncStorage.setItem('closet_items', JSON.stringify(updatedItems));
+            setItems(updatedItems);
+          }
         }
       }
     ]);
@@ -83,21 +109,22 @@ export default function LaundryScreen() {
 
   const dirtyCount = dirtyIds.filter(id => items.some(i => i.id === id)).length;
 
+  if (!fontsLoaded) return null;
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Laundry</Text>
         {dirtyCount > 0 && (
-          <TouchableOpacity style={styles.washBtn} onPress={washAll}>
-            <Text style={styles.washBtnText}>Wash all</Text>
+          <TouchableOpacity style={styles.washAllBtn} onPress={washAll}>
+            <Text style={styles.washAllBtnText}>Wash all</Text>
           </TouchableOpacity>
         )}
       </View>
 
       {dirtyCount > 0 && (
         <View style={styles.banner}>
-          <Text style={styles.bannerEmoji}>🧺</Text>
-          <Text style={styles.bannerText}>{dirtyCount} item{dirtyCount > 1 ? 's' : ''} need washing</Text>
+          <Text style={styles.bannerText}>🧺 {dirtyCount} item{dirtyCount > 1 ? 's' : ''} need washing</Text>
         </View>
       )}
 
@@ -127,6 +154,9 @@ export default function LaundryScreen() {
                 <Text style={styles.label}>{item.label}</Text>
                 {item.brand ? <Text style={styles.brand}>{item.brand}</Text> : null}
                 <Text style={styles.category}>{item.category}</Text>
+                {item.wornSinceWash > 0 && !isDirty && (
+                  <Text style={styles.wornSince}>Worn {item.wornSinceWash}× since last wash</Text>
+                )}
               </View>
               <View style={[styles.statusBadge, isDirty ? styles.statusDirty : styles.statusClean]}>
                 <Text style={[styles.statusText, isDirty ? styles.statusTextDirty : styles.statusTextClean]}>
@@ -148,26 +178,26 @@ export default function LaundryScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
-  title: { fontSize: 22, fontWeight: '500' },
-  washBtn: { backgroundColor: '#EEEDFE', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20 },
-  washBtnText: { color: '#534AB7', fontSize: 13, fontWeight: '500' },
-  banner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginBottom: 12, padding: 12, borderRadius: 12, backgroundColor: '#FFF3E0' },
-  bannerEmoji: { fontSize: 20 },
-  bannerText: { fontSize: 13, color: '#E65100', fontWeight: '500' },
-  filterRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 12 },
-  chip: { paddingHorizontal: 14, paddingVertical: 5, borderRadius: 20, borderWidth: 0.5, borderColor: '#ddd', backgroundColor: '#f5f5f5' },
-  chipActive: { backgroundColor: '#EEEDFE', borderColor: '#AFA9EC' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingBottom: 12 },
+  title: { fontSize: 36, fontFamily: 'PlayfairDisplay_600SemiBold', color: '#1a1a1a' },
+  washAllBtn: { backgroundColor: '#1a1a1a', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 50 },
+  washAllBtnText: { color: '#fff', fontSize: 13, fontWeight: '500' },
+  banner: { marginHorizontal: 20, marginBottom: 12, padding: 14, borderRadius: 12, backgroundColor: '#1a1a1a' },
+  bannerText: { fontSize: 13, color: '#fff', fontWeight: '500', textAlign: 'center' },
+  filterRow: { flexDirection: 'row', paddingHorizontal: 20, gap: 8, marginBottom: 12 },
+  chip: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 50, backgroundColor: '#f5f5f5', borderWidth: 0.5, borderColor: '#e0e0e0' },
+  chipActive: { backgroundColor: '#1a1a1a', borderColor: '#1a1a1a' },
   chipText: { fontSize: 13, color: '#888' },
-  chipTextActive: { color: '#534AB7' },
-  list: { padding: 16, gap: 10 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 12, borderWidth: 0.5, borderColor: '#e0e0e0' },
+  chipTextActive: { color: '#fff', fontWeight: '500' },
+  list: { padding: 20, gap: 10 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, borderWidth: 0.5, borderColor: '#e0e0e0', backgroundColor: '#fff' },
   thumb: { width: 52, height: 64, borderRadius: 8 },
   thumbDirty: { opacity: 0.5 },
-  info: { flex: 1 },
-  label: { fontSize: 13, fontWeight: '500', color: '#333' },
-  brand: { fontSize: 11, color: '#aaa', marginTop: 2 },
-  category: { fontSize: 11, color: '#aaa', marginTop: 1 },
+  info: { flex: 1, gap: 2 },
+  label: { fontSize: 14, fontWeight: '500', color: '#1a1a1a' },
+  brand: { fontSize: 11, color: '#aaa' },
+  category: { fontSize: 11, color: '#aaa' },
+  wornSince: { fontSize: 11, color: '#E24B4A', marginTop: 2 },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
   statusDirty: { backgroundColor: '#FFF3E0' },
   statusClean: { backgroundColor: '#EAF3DE' },

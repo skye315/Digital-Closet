@@ -86,14 +86,28 @@ export default function CalendarScreen() {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
-  const addGroup = () => {
+  const addGroup = async () => {
     if (selectedIds.length === 0) { Alert.alert('No items selected', 'Please select at least one item.'); return; }
+    
     const entry = getEntry(selectedDate);
     const currentGroups = entry?.groups || [];
     const updated = entries.filter(e => e.date !== selectedDate);
     updated.push({ date: selectedDate, groups: [...currentGroups, selectedIds] });
     setEntries(updated);
     saveEntries(updated);
+  
+    const savedItems = await AsyncStorage.getItem('closet_items');
+    if (savedItems) {
+      const parsed = JSON.parse(savedItems);
+      const updatedItems = parsed.map((i: any) =>
+        selectedIds.includes(i.id)
+          ? { ...i, wornCount: i.wornCount + 1, wornSinceWash: (i.wornSinceWash || 0) + 1 }
+          : i
+      );
+      await AsyncStorage.setItem('closet_items', JSON.stringify(updatedItems));
+      setClothes(updatedItems);
+    }
+  
     setSelectedIds([]);
     setEditingDay(false);
   };
