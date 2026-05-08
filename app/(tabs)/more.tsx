@@ -9,6 +9,7 @@ const FEATURES = [
   { label: 'Wear Tracker', route: '/tracker' },
   { label: 'Monthly Recap', route: '/recap' },
   { label: 'Laundry Status', route: '/laundry' },
+  { label: 'My Closets', route: '/closets' },
 ];
 
 export default function MoreScreen() {

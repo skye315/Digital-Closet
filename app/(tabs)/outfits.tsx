@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, SafeAreaView, TouchableOpacity,
   FlatList, Image, Modal, TextInput, Alert, ScrollView
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold } from '@expo-google-fonts/playfair-display';
+import { useFocusEffect } from '@react-navigation/native';
 
-type ClothingItem = { id: string; uri: string; label: string; brand: string; category: string; colors: string[]; wornCount: number; };
+type ClothingItem = { id: string; uri: string; label: string; brand: string; category: string; colors: string[]; wornCount: number; closetId: string; };
 type Outfit = { id: string; name: string; tag: string; itemIds: string[]; wornCount: number; lastWorn?: string; };
 
 const TAGS = ['Casual', 'Formal', 'PJs', 'Athletic', 'Other'];
@@ -16,6 +17,7 @@ export default function OutfitsScreen() {
   const [fontsLoaded] = useFonts({ PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold });
   const [clothes, setClothes] = useState<ClothingItem[]>([]);
   const [outfits, setOutfits] = useState<Outfit[]>([]);
+  const [activeClosetId, setActiveClosetId] = useState<string>('all');
   const [modalVisible, setModalVisible] = useState(false);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedOutfit, setSelectedOutfit] = useState<Outfit | null>(null);
@@ -26,15 +28,20 @@ export default function OutfitsScreen() {
   const [activeTag, setActiveTag] = useState('All');
   const [isEditing, setIsEditing] = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      const savedClothes = await AsyncStorage.getItem('closet_items');
-      const savedOutfits = await AsyncStorage.getItem('outfits');
-      if (savedClothes) setClothes(JSON.parse(savedClothes));
-      if (savedOutfits) setOutfits(JSON.parse(savedOutfits));
-    };
-    load();
-  }, []);
+  const loadData = async () => {
+    const savedClothes = await AsyncStorage.getItem('closet_items');
+    const savedOutfits = await AsyncStorage.getItem('outfits');
+    const activeCloset = await AsyncStorage.getItem('active_closet');
+    if (savedClothes) setClothes(JSON.parse(savedClothes));
+    if (savedOutfits) setOutfits(JSON.parse(savedOutfits));
+    if (activeCloset) setActiveClosetId(activeCloset);
+  };
+
+  useEffect(() => { loadData(); }, []);
+
+  useFocusEffect(
+    useCallback(() => { loadData(); }, [])
+  );
 
   const saveOutfits = async (updated: Outfit[]) => {
     await AsyncStorage.setItem('outfits', JSON.stringify(updated));
@@ -94,7 +101,14 @@ export default function OutfitsScreen() {
       .concat(clothes.filter(c => itemIds.includes(c.id) && !CATEGORY_ORDER.includes(c.category)));
   };
 
-  const filtered = activeTag === 'All' ? outfits : outfits.filter(o => o.tag === activeTag);
+  const activeClothes = activeClosetId === 'all'
+    ? clothes
+    : clothes.filter(c => (c.closetId || 'default') === activeClosetId);
+
+  const filtered = (activeClosetId === 'all'
+    ? outfits
+    : outfits.filter(o => o.itemIds.every(id => activeClothes.some(c => c.id === id)))
+  ).filter(o => activeTag === 'All' || o.tag === activeTag);
 
   const renderCollage = (outfit: Outfit) => {
     const outfitClothes = getSortedClothes(outfit.itemIds);
@@ -121,9 +135,7 @@ export default function OutfitsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerRow}>
-        <View style={styles.headerPill}>
-          <Text style={styles.headerPillText}>Search My Outfits</Text>
-        </View>
+        <Text style={styles.title}>My Outfits</Text>
         <TouchableOpacity style={styles.addBtn} onPress={() => {
           setIsEditing(false);
           setOutfitName('');
@@ -165,7 +177,6 @@ export default function OutfitsScreen() {
         }
       />
 
-      {/* Detail Modal */}
       <Modal visible={detailModalVisible} animationType="slide" transparent>
         <View style={styles.detailOverlay}>
           <View style={styles.detailSheet}>
@@ -223,7 +234,6 @@ export default function OutfitsScreen() {
         </View>
       </Modal>
 
-      {/* Add/Edit Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.overlay}>
           <View style={styles.sheet}>
@@ -248,7 +258,7 @@ export default function OutfitsScreen() {
             </View>
             <Text style={styles.sheetLabel}>Pick clothes</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.picker}>
-              {clothes.map(c => (
+              {activeClothes.map(c => (
                 <TouchableOpacity
                   key={c.id}
                   style={styles.pickItem}
@@ -262,7 +272,7 @@ export default function OutfitsScreen() {
                   <Text style={styles.pickLabel} numberOfLines={1}>{c.label}</Text>
                 </TouchableOpacity>
               ))}
-              {clothes.length === 0 && <Text style={styles.noClothes}>Add clothes to your closet first</Text>}
+              {activeClothes.length === 0 && <Text style={styles.noClothes}>Add clothes to your closet first</Text>}
             </ScrollView>
             <TouchableOpacity style={styles.saveBtn} onPress={saveOutfit}>
               <Text style={styles.saveBtnText}>{isEditing ? 'Save changes' : 'Save outfit'}</Text>
@@ -279,9 +289,8 @@ export default function OutfitsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, gap: 10 },
-  headerPill: { flex: 1, backgroundColor: '#1a1a1a', borderRadius: 50, paddingVertical: 14, paddingHorizontal: 20 },
-  headerPillText: { color: '#fff', fontSize: 20, fontFamily: 'PlayfairDisplay_600SemiBold', textAlign: 'center' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, paddingBottom: 12 },
+  title: { fontSize: 36, fontFamily: 'PlayfairDisplay_600SemiBold', color: '#1a1a1a' },
   addBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' },
   addBtnText: { color: '#fff', fontSize: 24, lineHeight: 28 },
   filterScroll: { maxHeight: 44 },

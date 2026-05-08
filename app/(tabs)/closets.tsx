@@ -1,26 +1,22 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
-    Alert,
-    FlatList, Modal,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  View, Text, StyleSheet, SafeAreaView, TouchableOpacity,
+  FlatList, Modal, TextInput, Alert
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold } from '@expo-google-fonts/playfair-display';
+import { router } from 'expo-router';
 
 export type Closet = {
   id: string;
   name: string;
   emoji: string;
-  itemCount: number;
 };
 
 const EMOJIS = ['👔', '🎓', '🏠', '🌴', '❄️', '💼', '👗', '🧳'];
 
 export default function ClosetsScreen() {
+  const [fontsLoaded] = useFonts({ PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold });
   const [closets, setClosets] = useState<Closet[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [name, setName] = useState('');
@@ -52,7 +48,6 @@ export default function ClosetsScreen() {
       id: Date.now().toString(),
       name: name.trim(),
       emoji: selectedEmoji,
-      itemCount: 0,
     };
     const updated = [...closets, newCloset];
     setClosets(updated);
@@ -78,16 +73,20 @@ export default function ClosetsScreen() {
     );
   };
 
-  const allClosets = [{ id: 'all', name: 'All closets', emoji: '🗂️', itemCount: 0 }, ...closets];
+  const allClosets = [{ id: 'all', name: 'All closets', emoji: '🗂️' }, ...closets];
+
+  if (!fontsLoaded) return null;
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>My closets</Text>
+        <Text style={styles.title}>My Closets</Text>
         <TouchableOpacity style={styles.addBtn} onPress={() => setModalVisible(true)}>
           <Text style={styles.addBtnText}>+</Text>
         </TouchableOpacity>
       </View>
+
+      <Text style={styles.subtitle}>Tap a closet to make it active. The whole app will filter to that closet.</Text>
 
       <FlatList
         data={allClosets}
@@ -100,11 +99,10 @@ export default function ClosetsScreen() {
             onLongPress={() => item.id !== 'all' && deleteCloset(item.id)}>
             <Text style={styles.emoji}>{item.emoji}</Text>
             <View style={styles.info}>
-              <Text style={styles.closetName}>{item.name}</Text>
-              {item.id === 'all'
-                ? <Text style={styles.closetSub}>Shows all your clothes</Text>
-                : <Text style={styles.closetSub}>Long press to delete</Text>
-              }
+              <Text style={[styles.closetName, activeClosetId === item.id && styles.closetNameActive]}>{item.name}</Text>
+              <Text style={[styles.closetSub, activeClosetId === item.id && styles.closetSubActive]}>
+                {item.id === 'all' ? 'Shows everything' : 'Long press to delete'}
+              </Text>
             </View>
             {activeClosetId === item.id && (
               <View style={styles.activeBadge}>
@@ -152,29 +150,32 @@ export default function ClosetsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
-  title: { fontSize: 22, fontWeight: '500' },
-  addBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#534AB7', alignItems: 'center', justifyContent: 'center' },
-  addBtnText: { color: '#fff', fontSize: 22, lineHeight: 26 },
-  list: { padding: 16, gap: 10 },
-  card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, borderWidth: 0.5, borderColor: '#e0e0e0' },
-  cardActive: { borderColor: '#AFA9EC', backgroundColor: '#EEEDFE' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingBottom: 8 },
+  title: { fontSize: 36, fontFamily: 'PlayfairDisplay_600SemiBold', color: '#1a1a1a' },
+  addBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' },
+  addBtnText: { color: '#fff', fontSize: 24, lineHeight: 28 },
+  subtitle: { fontSize: 13, color: '#aaa', paddingHorizontal: 20, marginBottom: 16 },
+  list: { padding: 20, gap: 10 },
+  card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 14, borderWidth: 0.5, borderColor: '#e0e0e0' },
+  cardActive: { backgroundColor: '#1a1a1a', borderColor: '#1a1a1a' },
   emoji: { fontSize: 28 },
   info: { flex: 1 },
   closetName: { fontSize: 15, fontWeight: '500', color: '#333' },
+  closetNameActive: { color: '#fff' },
   closetSub: { fontSize: 12, color: '#aaa', marginTop: 2 },
-  activeBadge: { backgroundColor: '#534AB7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+  closetSubActive: { color: '#888' },
+  activeBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   activeBadgeText: { color: '#fff', fontSize: 12, fontWeight: '500' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 },
-  sheetTitle: { fontSize: 18, fontWeight: '500', marginBottom: 16, textAlign: 'center' },
+  sheetTitle: { fontSize: 22, fontFamily: 'PlayfairDisplay_600SemiBold', marginBottom: 16, textAlign: 'center', color: '#1a1a1a' },
   input: { borderWidth: 0.5, borderColor: '#ddd', borderRadius: 10, padding: 12, fontSize: 15, marginBottom: 16, color: '#333' },
   sheetLabel: { fontSize: 13, color: '#888', marginBottom: 8 },
   emojiRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
   emojiBtn: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: '#ddd', backgroundColor: '#f5f5f5' },
-  emojiBtnActive: { backgroundColor: '#EEEDFE', borderColor: '#AFA9EC' },
+  emojiBtnActive: { backgroundColor: '#1a1a1a', borderColor: '#1a1a1a' },
   emojiText: { fontSize: 24 },
-  saveBtn: { backgroundColor: '#534AB7', borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 10 },
+  saveBtn: { backgroundColor: '#1a1a1a', borderRadius: 50, padding: 14, alignItems: 'center', marginBottom: 10 },
   saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '500' },
   cancelBtn: { alignItems: 'center', padding: 10 },
   cancelBtnText: { color: '#888', fontSize: 14 },

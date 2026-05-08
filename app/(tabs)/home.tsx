@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, SafeAreaView, TouchableOpacity,
   Image, Modal, ScrollView, Alert
@@ -6,6 +6,8 @@ import {
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold } from '@expo-google-fonts/playfair-display';
+import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 
 type ClothingItem = {
   id: string;
@@ -16,6 +18,7 @@ type ClothingItem = {
   colors: string[];
   wornCount: number;
   wornSinceWash: number;
+  closetId: string;
 };
 
 type Outfit = {
@@ -25,6 +28,12 @@ type Outfit = {
   itemIds: string[];
   wornCount: number;
   lastWorn?: string;
+};
+
+type Closet = {
+  id: string;
+  name: string;
+  emoji: string;
 };
 
 const CATEGORY_ORDER = ['Outerwear', 'Tops', 'Bottoms', 'Shoes', 'Accessories'];
@@ -62,6 +71,8 @@ export default function HomeScreen() {
   const [fontsLoaded] = useFonts({ PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold });
   const [items, setItems] = useState<ClothingItem[]>([]);
   const [outfits, setOutfits] = useState<Outfit[]>([]);
+  const [closets, setClosets] = useState<Closet[]>([]);
+  const [activeClosetId, setActiveClosetId] = useState<string>('all');
   const [todayItems, setTodayItems] = useState<string[]>([]);
   const [otdSelectedIds, setOtdSelectedIds] = useState<string[]>([]);
   const [otdModalVisible, setOtdModalVisible] = useState(false);
@@ -92,27 +103,38 @@ export default function HomeScreen() {
       .concat(items.filter(c => itemIds.includes(c.id) && !CATEGORY_ORDER.includes(c.category)));
   };
 
+  const loadData = async () => {
+    const saved = await AsyncStorage.getItem('closet_items');
+    const savedOutfits = await AsyncStorage.getItem('outfits');
+    const dirty = await AsyncStorage.getItem('dirty_items');
+    const savedClosets = await AsyncStorage.getItem('closets');
+    const activeCloset = await AsyncStorage.getItem('active_closet');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      const migrated = parsed.map((item: any) => ({
+        ...item,
+        wornSinceWash: item.wornSinceWash || 0,
+      }));
+      setItems(migrated);
+    }
+    if (savedOutfits) setOutfits(JSON.parse(savedOutfits));
+    if (dirty) setDirtyIds(JSON.parse(dirty));
+    if (savedClosets) setClosets(JSON.parse(savedClosets));
+    if (activeCloset) setActiveClosetId(activeCloset);
+    const otd = await AsyncStorage.getItem(todayKey());
+    if (otd) setTodayItems(JSON.parse(otd));
+  };
+
   useEffect(() => {
-    const load = async () => {
-      const saved = await AsyncStorage.getItem('closet_items');
-      const savedOutfits = await AsyncStorage.getItem('outfits');
-      const dirty = await AsyncStorage.getItem('dirty_items');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        const migrated = parsed.map((item: any) => ({
-          ...item,
-          wornSinceWash: item.wornSinceWash || 0,
-        }));
-        setItems(migrated);
-      }
-      if (savedOutfits) setOutfits(JSON.parse(savedOutfits));
-      if (dirty) setDirtyIds(JSON.parse(dirty));
-      const otd = await AsyncStorage.getItem(todayKey());
-      if (otd) setTodayItems(JSON.parse(otd));
-    };
-    load();
+    loadData();
     fetchWeather();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [])
+  );
 
   const fetchWeather = async () => {
     try {
@@ -131,6 +153,14 @@ export default function HomeScreen() {
       });
     } catch (e) { console.log('Weather fetch failed', e); }
   };
+
+  const activeItems = activeClosetId === 'all'
+    ? items
+    : items.filter(i => (i.closetId || 'default') === activeClosetId);
+
+  const activeOutfits = activeClosetId === 'all'
+    ? outfits
+    : outfits.filter(o => o.itemIds.every(id => activeItems.some(i => i.id === id)));
 
   const doSave = async (selectedIds: string[]) => {
     await AsyncStorage.setItem(todayKey(), JSON.stringify(selectedIds));
@@ -206,6 +236,7 @@ export default function HomeScreen() {
   };
 
   const todayClothes = getSortedClothes(todayItems);
+  const activeCloset = closets.find(c => c.id === activeClosetId);
 
   if (!fontsLoaded) return null;
 
@@ -220,6 +251,19 @@ export default function HomeScreen() {
           <Text style={styles.weatherText}>
             Today's Weather: {weather.temp}° and {weather.desc} {weather.emoji}
           </Text>
+        )}
+
+        {closets.length > 0 && (
+          <TouchableOpacity
+            style={styles.closetSwitcher}
+            onPress={() => router.push('/closets')}>
+            <Text style={styles.closetSwitcherText}>
+              {activeClosetId === 'all'
+                ? '🗂️ All closets'
+                : `${activeCloset?.emoji} ${activeCloset?.name}`}
+            </Text>
+            <Text style={styles.closetSwitcherArrow}>›</Text>
+          </TouchableOpacity>
         )}
 
         <Text style={styles.ootdTitle}>OOTD:</Text>
@@ -252,7 +296,6 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* OOTD Picker Modal */}
       <Modal visible={otdModalVisible} animationType="slide">
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
@@ -281,10 +324,10 @@ export default function HomeScreen() {
           <View style={styles.pickerContainer}>
             {pickMode === 'outfits' ? (
               <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 16 }}>
-                {outfits.length === 0 && (
+                {activeOutfits.length === 0 && (
                   <Text style={styles.emptyPick}>No saved outfits yet — go to the Outfits tab to create one!</Text>
                 )}
-                {outfits.map(o => {
+                {activeOutfits.map(o => {
                   const outfitClothes = getSortedClothes(o.itemIds);
                   const isSelected = o.itemIds.length === otdSelectedIds.length &&
                     o.itemIds.every(id => otdSelectedIds.includes(id));
@@ -340,7 +383,7 @@ export default function HomeScreen() {
                 </ScrollView>
 
                 <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.customGridInner}>
-                  {items
+                  {activeItems
                     .filter(i => i.category === customCategory)
                     .map(c => (
                       <TouchableOpacity
@@ -359,8 +402,8 @@ export default function HomeScreen() {
                         {c.brand ? <Text style={styles.customCardBrand} numberOfLines={1}>{c.brand}</Text> : null}
                       </TouchableOpacity>
                     ))}
-                  {items.filter(i => i.category === customCategory).length === 0 && (
-                    <Text style={styles.emptyPick}>No {customCategory.toLowerCase()} in your closet</Text>
+                  {activeItems.filter(i => i.category === customCategory).length === 0 && (
+                    <Text style={styles.emptyPick}>No {customCategory.toLowerCase()} in this closet</Text>
                   )}
                 </ScrollView>
               </View>
@@ -378,7 +421,6 @@ export default function HomeScreen() {
         </SafeAreaView>
       </Modal>
 
-      {/* Laundry Check Modal */}
       <Modal visible={laundryModalVisible} animationType="slide" transparent>
         <View style={styles.overlay}>
           <View style={styles.laundrySheet}>
@@ -430,6 +472,9 @@ const styles = StyleSheet.create({
   greetingPill: { backgroundColor: '#1a1a1a', borderRadius: 50, paddingVertical: 18, paddingHorizontal: 28, alignSelf: 'center' },
   greetingText: { color: '#fff', fontSize: 28, fontFamily: 'PlayfairDisplay_600SemiBold', letterSpacing: -0.5 },
   weatherText: { fontSize: 16, color: '#333', textAlign: 'center', marginTop: 4 },
+  closetSwitcher: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#f5f5f5', borderRadius: 50, paddingVertical: 8, paddingHorizontal: 16, alignSelf: 'center' },
+  closetSwitcherText: { fontSize: 13, color: '#1a1a1a', fontWeight: '500' },
+  closetSwitcherArrow: { fontSize: 16, color: '#aaa' },
   ootdTitle: { fontSize: 32, fontFamily: 'PlayfairDisplay_600SemiBold', color: '#1a1a1a', textAlign: 'center' },
   ootdCard: { backgroundColor: '#1a1a1a', borderRadius: 16, overflow: 'hidden', minHeight: 340, justifyContent: 'center' },
   ootdSlideshow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },

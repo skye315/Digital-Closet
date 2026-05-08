@@ -179,8 +179,8 @@ export default function ClosetScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerRow}>
-        <View style={styles.headerPill}>
-          <Text style={styles.headerPillText}>Search My Closet</Text>
+        <View style={styles.title}>
+          <Text style={styles.title}>My Closet</Text>
         </View>
         <TouchableOpacity style={styles.addBtn} onPress={pickImage}>
           <Text style={styles.addBtnText}>+</Text>
@@ -426,9 +426,8 @@ export default function ClosetScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, gap: 10 },
-  headerPill: { flex: 1, backgroundColor: '#1a1a1a', borderRadius: 50, paddingVertical: 14, paddingHorizontal: 20 },
-  headerPillText: { color: '#fff', fontSize: 20, fontFamily: 'PlayfairDisplay_600SemiBold', textAlign: 'center' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, paddingBottom: 12 },
+  title: { fontSize: 36, fontFamily: 'PlayfairDisplay_600SemiBold', color: '#1a1a1a' },
   addBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' },
   addBtnText: { color: '#fff', fontSize: 24, lineHeight: 28 },
   filterScroll: { maxHeight: 44 },
