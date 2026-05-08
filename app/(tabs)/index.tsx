@@ -1,6 +1,9 @@
+import { PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold, useFonts } from '@expo-google-fonts/playfair-display';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 import {
   Alert,
   FlatList,
@@ -45,6 +48,10 @@ const COLORS = [
 const STORAGE_KEY = 'closet_items';
 
 export default function ClosetScreen() {
+  const [fontsLoaded] = useFonts({
+    PlayfairDisplay_400Regular,
+    PlayfairDisplay_600SemiBold,
+  });
   const [items, setItems] = useState<ClothingItem[]>([]);
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeBrand, setActiveBrand] = useState('All');
@@ -63,14 +70,25 @@ export default function ClosetScreen() {
   const [editBrand, setEditBrand] = useState('');
   const [editCategory, setEditCategory] = useState('Tops');
   const [editColors, setEditColors] = useState<string[]>([]);
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<ClothingItem | null>(null);
+  const [dirtyIds, setDirtyIds] = useState<string[]>([]);
 
   useEffect(() => { loadItems(); }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadItems();
+    }, [])
+  );
 
   const loadItems = async () => {
     try {
       const saved = await AsyncStorage.getItem(STORAGE_KEY);
       const savedClosets = await AsyncStorage.getItem('closets');
       const activeCloset = await AsyncStorage.getItem('active_closet');
+      const dirtyRaw = await AsyncStorage.getItem('dirty_items');
+      if (dirtyRaw) setDirtyIds(JSON.parse(dirtyRaw));
       if (saved) {
         const parsed = JSON.parse(saved);
         const migrated = parsed.map((item: any) => ({
@@ -198,10 +216,14 @@ export default function ClosetScreen() {
   .filter(i => activeBrand === 'All' || i.brand === activeBrand)
   .filter(i => activeColor === 'All' || i.colors?.includes(activeColor));
 
+  if (!fontsLoaded) return null;
+
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>My closet</Text>
+      <View style={styles.headerRow}>
+        <View style={styles.headerPill}>
+          <Text style={styles.headerPillText}>Search My Closet</Text>
+        </View>
         <TouchableOpacity style={styles.addBtn} onPress={pickImage}>
           <Text style={styles.addBtnText}>+</Text>
         </TouchableOpacity>
@@ -259,63 +281,11 @@ export default function ClosetScreen() {
           <TouchableOpacity
             style={styles.card}
             onPress={() => {
-              Alert.alert(
-                item.label,
-                `${item.brand ? 'Brand: ' + item.brand + '\n' : ''}${item.colors?.length > 0 ? 'Colors: ' + item.colors.join(', ')  + '\n' : ''}Category: ${item.category}\nWorn ${item.wornCount} times`,
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Log wear today',
-                    onPress: () => {
-                      const updated = items.map(i =>
-                        i.id === item.id ? { ...i, wornCount: i.wornCount + 1 } : i
-                      );
-                      setItems(updated);
-                      saveItems(updated);
-                    }
-                  },
-                  {
-                    text: 'Move to closet',
-                    onPress: () => {
-                      Alert.alert(
-                        'Move to closet',
-                        'Which closet?',
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          ...closets.map(c => ({
-                            text: `${c.emoji} ${c.name}`,
-                            onPress: () => {
-                              const updated = items.map(i =>
-                                i.id === item.id ? { ...i, closetId: c.id } : i
-                              );
-                              setItems(updated);
-                              saveItems(updated);
-                            }
-                          }))
-                        ]
-                      );
-                    }
-                  },
-                  {
-                    text: 'Edit',
-                    onPress: () => openEdit(item)
-                  },
-                  {
-                    text: 'Remove', style: 'destructive',
-                    onPress: () => {
-                      const updated = items.filter(i => i.id !== item.id);
-                      setItems(updated);
-                      saveItems(updated);
-                    }
-                  }
-                ]
-              );
+              setSelectedItem(item);
+              setDetailModalVisible(true);
             }}>
             <Image source={{ uri: item.uri }} style={styles.cardImage} />
-            <View style={styles.cardLabel}>
-              <Text style={styles.cardLabelText} numberOfLines={1}>{item.label}</Text>
-              {item.brand ? <Text style={styles.cardBrandText} numberOfLines={1}>{item.brand}</Text> : null}
-            </View>
+            <View style={styles.polaroidBottom} />
             {item.colors?.length > 0 && (
               <View style={styles.colorBadges}>
                 {item.colors.slice(0,2).map(color => (
@@ -336,6 +306,104 @@ export default function ClosetScreen() {
           </View>
         }
       />
+
+        <Modal visible={detailModalVisible} animationType="slide" transparent>
+          <View style={styles.detailOverlay}>
+            <View style={styles.detailSheet}>
+              <Text style={styles.detailName}>{selectedItem?.label}</Text>
+
+              <Image source={{ uri: selectedItem?.uri }} style={styles.detailImage} />
+
+              <View style={styles.detailInfo}>
+                {selectedItem?.brand ? (
+                  <Text style={styles.detailInfoText}>Brand: {selectedItem.brand}</Text>
+                ) : null}
+                <Text style={styles.detailInfoText}>
+                  Status: {selectedItem && dirtyIds.includes(selectedItem.id) ? 'Dirty 🧺' : 'Clean ✓'}
+                </Text>
+                <Text style={styles.detailInfoText}>
+                  Number of Wears: {selectedItem?.wornCount}
+                </Text>
+              </View>
+
+              <View style={styles.detailBtns}>
+                <TouchableOpacity
+                  style={styles.detailBtn}
+                  onPress={() => {
+                    if (!selectedItem) return;
+                    const updated = items.map(i =>
+                      i.id === selectedItem.id ? { ...i, wornCount: i.wornCount + 1 } : i
+                    );
+                    setItems(updated);
+                    saveItems(updated);
+                    setDetailModalVisible(false);
+                  }}>
+                  <Text style={styles.detailBtnText}>Worn</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.detailBtn}
+                  onPress={() => {
+                    if (!selectedItem) return;
+                    Alert.alert(
+                      'Move to closet',
+                      'Which closet?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        ...closets.map(c => ({
+                          text: `${c.emoji} ${c.name}`,
+                          onPress: () => {
+                            const updated = items.map(i =>
+                              i.id === selectedItem.id ? { ...i, closetId: c.id as string } : i
+                            );
+                            setItems(updated);
+                            saveItems(updated);
+                            setDetailModalVisible(false);
+                          }
+                        }))
+                      ]
+                    );
+                  }}>
+                <Text style={styles.detailBtnText}>Move</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.detailBtn}
+                onPress={() => {
+                  if (!selectedItem) return;
+                  setDetailModalVisible(false);
+                  openEdit(selectedItem);
+                }}>
+                <Text style={styles.detailBtnText}>Edit</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.detailBtn, styles.detailBtnDelete]}
+                onPress={() => {
+                  if (!selectedItem) return;
+                  Alert.alert('Remove item', `Remove "${selectedItem.label}"?`, [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Remove', style: 'destructive',
+                      onPress: () => {
+                        const updated = items.filter(i => i.id !== selectedItem.id);
+                        setItems(updated);
+                        saveItems(updated);
+                        setDetailModalVisible(false);
+                      }
+                    }
+                  ]);
+                }}>
+              <Text style={styles.detailBtnText}>Delete</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={styles.detailClose} onPress={() => setDetailModalVisible(false)}>
+            <Text style={styles.detailCloseText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
 
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.overlay}>
@@ -454,53 +522,67 @@ export default function ClosetScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
-  title: { fontSize: 22, fontWeight: '500' },
-  addBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#534AB7', alignItems: 'center', justifyContent: 'center' },
-  addBtnText: { color: '#fff', fontSize: 22, lineHeight: 26 },
-  filterScroll: { maxHeight: 44 },
-  filterRow: { paddingHorizontal: 16, gap: 8, paddingBottom: 10, flexDirection: 'row' },
-  chip: { paddingHorizontal: 14, paddingVertical: 5, borderRadius: 20, borderWidth: 0.5, borderColor: '#ddd', backgroundColor: '#f5f5f5' },
-  chipActive: { backgroundColor: '#EEEDFE', borderColor: '#AFA9EC' },
-  brandChipActive: { backgroundColor: '#E1F5EE', borderColor: '#9FE1CB' },
-  chipText: { fontSize: 13, color: '#888' },
-  chipTextActive: { color: '#534AB7' },
-  brandChipTextActive: { color: '#0F6E56' },
-  colorChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, borderWidth: 0.5, borderColor: '#ddd', backgroundColor: '#f5f5f5' },
-  colorChipActive: { backgroundColor: '#EEEDFE', borderColor: '#AFA9EC' },
-  colorDot: { width: 12, height: 12, borderRadius: 6 },
-  colorBadges: { position: 'absolute', bottom: 30, right: 5, flexDirection: 'row', gap: 3},
-  colorBadge: {width: 10, height: 10, borderRadius: 5, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.5)'},
-  grid: { paddingHorizontal: 12, gap: 8 },
-  card: { flex: 1, margin: 4, aspectRatio: 3/4, borderRadius: 10, overflow: 'hidden', backgroundColor: '#f0f0f0', position: 'relative' },
-  cardImage: { width: '100%', height: '100%' },
-  cardLabel: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.35)', padding: 4 },
-  cardLabelText: { color: '#fff', fontSize: 10 },
-  cardBrandText: { color: 'rgba(255,255,255,0.7)', fontSize: 9 },
-  badge: { position: 'absolute', top: 5, right: 5, backgroundColor: '#EEEDFE', borderRadius: 8, paddingHorizontal: 5, paddingVertical: 2 },
-  badgeText: { fontSize: 10, color: '#534AB7' },
-  empty: { flex: 1, alignItems: 'center', marginTop: 80 },
-  emptyText: { color: '#aaa', fontSize: 15 },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 },
-  sheetTitle: { fontSize: 18, fontWeight: '500', marginBottom: 16, textAlign: 'center' },
-  preview: { width: 100, height: 133, borderRadius: 10, alignSelf: 'center', marginBottom: 16 },
-  input: { borderWidth: 0.5, borderColor: '#ddd', borderRadius: 10, padding: 12, fontSize: 15, marginBottom: 12, color: '#333' },
-  sheetLabel: { fontSize: 13, color: '#888', marginBottom: 8 },
-  catRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  catChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 0.5, borderColor: '#ddd', backgroundColor: '#f5f5f5' },
-  catChipActive: { backgroundColor: '#EEEDFE', borderColor: '#AFA9EC' },
-  catChipText: { fontSize: 13, color: '#888' },
-  catChipTextActive: { color: '#534AB7' },
-  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 24 },
-  colorOption: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 0.5, borderColor: '#ddd', backgroundColor: '#f5f5f5' },
-  colorOptionActive: { backgroundColor: '#EEEDFE', borderColor: '#AFA9EC' },
-  colorCircle: { width: 14, height: 14, borderRadius: 7 },
-  colorName: { fontSize: 12, color: '#666' },
-  colorCheck: { fontSize: 11, color: '#534AB7', fontWeight: '500' },
-  saveBtn: { backgroundColor: '#534AB7', borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 10 },
-  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '500' },
-  cancelBtn: { alignItems: 'center', padding: 10 },
-  cancelBtnText: { color: '#888', fontSize: 14 },
+overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+sheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 },
+sheetTitle: { fontSize: 18, fontWeight: '500', marginBottom: 16, textAlign: 'center' },
+sheetLabel: { fontSize: 13, color: '#888', marginBottom: 8 },
+preview: { width: 100, height: 133, borderRadius: 10, alignSelf: 'center', marginBottom: 16 },
+input: { borderWidth: 0.5, borderColor: '#ddd', borderRadius: 10, padding: 12, fontSize: 15, marginBottom: 12, color: '#333' },
+catRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+catChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 0.5, borderColor: '#ddd', backgroundColor: '#f5f5f5' },
+catChipActive: { backgroundColor: '#1a1a1a', borderColor: '#1a1a1a' },
+catChipText: { fontSize: 13, color: '#888' },
+catChipTextActive: { color: '#fff' },
+colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 24 },
+colorOption: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 0.5, borderColor: '#ddd', backgroundColor: '#f5f5f5' },
+colorOptionActive: { backgroundColor: '#1a1a1a', borderColor: '#1a1a1a' },
+colorCircle: { width: 14, height: 14, borderRadius: 7 },
+colorName: { fontSize: 12, color: '#666' },
+colorCheck: { fontSize: 11, color: '#fff', fontWeight: '500' },
+saveBtn: { backgroundColor: '#1a1a1a', borderRadius: 50, padding: 14, alignItems: 'center', marginBottom: 10 },
+saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '500' },
+cancelBtn: { alignItems: 'center', padding: 10 },
+cancelBtnText: { color: '#888', fontSize: 14 },
+container: {flex: 1, backgroundColor: '#fff'},
+headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, gap: 10 },
+headerPill: { flex: 1, backgroundColor: '#1a1a1a', borderRadius: 50, paddingVertical: 14, paddingHorizontal: 20 },
+headerPillText: { color: '#fff', fontSize: 20, fontFamily: 'PlayfairDisplay_600SemiBold', textAlign: 'center' },
+addBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' },
+addBtnText: { color: '#fff', fontSize: 24, lineHeight: 28 },
+filterScroll: { maxHeight: 44 },
+filterRow: { paddingHorizontal: 16, gap: 8, paddingBottom: 10, flexDirection: 'row' },
+chip: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 50, backgroundColor: '#1a1a1a' },
+chipActive: { backgroundColor: '#1a1a1a', borderWidth: 2, borderColor: '#fff' },
+brandChipActive: { backgroundColor: '#1a1a1a', borderWidth: 2, borderColor: '#fff' },
+chipText: { fontSize: 13, color: '#fff', fontWeight: '500' },
+chipTextActive: { color: '#fff' },
+brandChipTextActive: { color: '#fff' },
+colorChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 50, backgroundColor: '#1a1a1a' },
+colorChipActive: { backgroundColor: '#1a1a1a', borderWidth: 2, borderColor: '#fff' },
+colorDot: { width: 12, height: 12, borderRadius: 6 },
+colorBadges: { position: 'absolute', top: 8, left: 8, flexDirection: 'row', gap: 3 },
+colorBadge: { width: 14, height: 14, borderRadius: 7, borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)' },
+grid: { paddingHorizontal: 12, gap: 8 },
+card: { flex: 1, margin: 6, borderRadius: 4, overflow: 'hidden', backgroundColor: '#fff', position: 'relative', borderWidth: 3, borderColor: '#1a1a1a', shadowColor: '#000', shadowOffset: {width: 2, height: 3}, shadowOpacity: 0.15, shadowRadius: 4, elevation: 4, },
+cardImage: { width: '100%', aspectRatio: 1, backgroundColor: '#f0f0f0'},
+cardLabel: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)', padding: 6 },
+cardLabelText: { color: '#fff', fontSize: 10, fontWeight: '500' },
+cardBrandText: { color: 'rgba(255,255,255,0.6)', fontSize: 9 },
+badge: { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8, paddingHorizontal: 5, paddingVertical: 2 },
+badgeText: { fontSize: 10, color: '#fff' },
+empty: { flex: 1, alignItems: 'center', marginTop: 80 },
+emptyText: { color: '#aaa', fontSize: 15 },
+detailOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+detailSheet: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+detailName: { color: '#fff', fontSize: 26, fontFamily: 'PlayfairDisplay_600SemiBold', textAlign: 'center', marginBottom: 16 },
+detailImage: { width: '100%', height: 260, borderRadius: 12, marginBottom: 16 },
+detailInfo: { alignItems: 'center', gap: 4, marginBottom: 20 },
+detailInfoText: { color: '#fff', fontSize: 14, fontFamily: 'PlayfairDisplay_400Regular' },
+detailBtns: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+detailBtn: { flex: 1, backgroundColor: '#333', borderRadius: 50, paddingVertical: 12, alignItems: 'center' },
+detailBtnDelete: { backgroundColor: '#333' },
+detailBtnText: { color: '#fff', fontSize: 13, fontWeight: '500' },
+detailClose: { alignItems: 'center', padding: 10 },
+detailCloseText: { color: '#888', fontSize: 14 },
+polaroidBottom: { height: 16, backgroundColor: '#1a1a1a' },
 });

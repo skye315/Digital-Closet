@@ -1,3 +1,4 @@
+import { PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold, useFonts } from '@expo-google-fonts/playfair-display';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
@@ -18,7 +19,7 @@ type ClothingItem = {
   label: string;
   brand: string;
   category: string;
-  color: string;
+  colors: string[];
   wornCount: number;
 };
 
@@ -33,22 +34,27 @@ function getWeatherEmoji(code: number) {
 }
 
 function getWeatherDesc(code: number) {
-  if (code === 0) return 'Clear sky';
-  if (code <= 2) return 'Partly cloudy';
+  if (code === 0) return 'Sunny';
+  if (code <= 2) return 'Partly Cloudy';
   if (code <= 3) return 'Overcast';
   if (code <= 51) return 'Drizzle';
   if (code <= 67) return 'Rainy';
   if (code <= 77) return 'Snowy';
-  if (code <= 82) return 'Rain showers';
+  if (code <= 82) return 'Rain Showers';
   return 'Thunderstorm';
 }
 
 export default function HomeScreen() {
+  const [fontsLoaded] = useFonts({
+    PlayfairDisplay_400Regular,
+    PlayfairDisplay_600SemiBold,
+  });
   const [items, setItems] = useState<ClothingItem[]>([]);
   const [todayItems, setTodayItems] = useState<string[]>([]);
   const [otdSelectedIds, setOtdSelectedIds] = useState<string[]>([]);
   const [otdModalVisible, setOtdModalVisible] = useState(false);
-  const [weather, setWeather] = useState<{ temp: number; emoji: string; desc: string; city: string } | null>(null);
+  const [weather, setWeather] = useState<{ temp: number; emoji: string; desc: string } | null>(null);
+  const [photoIndex, setPhotoIndex] = useState(0);
 
   const todayKey = () => {
     const d = new Date();
@@ -57,9 +63,9 @@ export default function HomeScreen() {
 
   const greeting = () => {
     const h = new Date().getHours();
-    if (h < 12) return 'Good morning';
-    if (h < 17) return 'Good afternoon';
-    return 'Good evening';
+    if (h < 12) return 'Good Morning!';
+    if (h < 17) return 'Good Afternoon!';
+    return 'Good Evening!';
   };
 
   useEffect(() => {
@@ -83,16 +89,10 @@ export default function HomeScreen() {
         `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&temperature_unit=fahrenheit`
       );
       const data = await res.json();
-      const geo = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`
-      );
-      const geoData = await geo.json();
-      const city = geoData.address?.city || geoData.address?.town || geoData.address?.village || 'Your area';
       setWeather({
         temp: Math.round(data.current_weather.temperature),
         emoji: getWeatherEmoji(data.current_weather.weathercode),
         desc: getWeatherDesc(data.current_weather.weathercode),
-        city,
       });
     } catch (e) { console.log('Weather fetch failed', e); }
   };
@@ -105,22 +105,26 @@ export default function HomeScreen() {
     const doSave = async () => {
       await AsyncStorage.setItem(todayKey(), JSON.stringify(otdSelectedIds));
       const updated = items.map(i =>
-        otdSelectedIds.includes(i.id) ? {...i, wornCount: i.wornCount + 1 } : i
+        otdSelectedIds.includes(i.id) ? { ...i, wornCount: i.wornCount + 1 } : i
       );
       await AsyncStorage.setItem('closet_items', JSON.stringify(updated));
       setItems(updated);
       setTodayItems(otdSelectedIds);
-
+    
       const savedEntries = await AsyncStorage.getItem('calendar_entries');
       const entries = savedEntries ? JSON.parse(savedEntries) : [];
       const today = new Date();
       const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const existingEntry = entries.find((e: any) => e.date === dateStr);
+      const currentGroups = existingEntry?.groups || (existingEntry?.itemIds ? [existingEntry.itemIds] : []);
       const updatedEntries = entries.filter((e: any) => e.date !== dateStr);
       if (otdSelectedIds.length > 0) {
+        updatedEntries.push({ date: dateStr, groups: [...currentGroups, otdSelectedIds] });
+      }
       await AsyncStorage.setItem('calendar_entries', JSON.stringify(updatedEntries));
       setOtdModalVisible(false);
-      }
-  };
+      setPhotoIndex(0);
+    };
 
     if (dirtySelected.length > 0) {
       Alert.alert(
@@ -138,91 +142,51 @@ export default function HomeScreen() {
 
   const todayClothes = items.filter(i => todayItems.includes(i.id));
 
+  if(!fontsLoaded) return null;
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>{greeting()}</Text>
-            {weather && <Text style={styles.location}>{weather.city}</Text>}
-          </View>
-          {weather && (
-            <View style={styles.weatherBox}>
-              <Text style={styles.weatherEmoji}>{weather.emoji}</Text>
-              <Text style={styles.weatherTemp}>{weather.temp}°F</Text>
-              <Text style={styles.weatherDesc}>{weather.desc}</Text>
-            </View>
-          )}
+
+        <View style={styles.greetingPill}>
+          <Text style={styles.greetingText}>{greeting()}</Text>
         </View>
 
+        {weather && (
+          <Text style={styles.weatherText}>
+            Today's Weather: {weather.temp}° and {weather.desc} {weather.emoji}
+          </Text>
+        )}
+
+        <Text style={styles.ootdTitle}>OOTD:</Text>
+
         <TouchableOpacity
-          style={styles.otdCard}
+          style={styles.ootdCard}
           onPress={() => { setOtdSelectedIds(todayItems); setOtdModalVisible(true); }}>
-          <View style={styles.otdCardHeader}>
-            <Text style={styles.otdCardTitle}>Today's outfit</Text>
-            <Text style={styles.otdCardEdit}>{todayClothes.length > 0 ? 'Edit ›' : 'Add ›'}</Text>
-          </View>
           {todayClothes.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.otdScroll}>
-              {todayClothes.map(c => (
-                <View key={c.id} style={styles.otdItem}>
-                  <Image source={{ uri: c.uri }} style={styles.otdImage} />
-                  <Text style={styles.otdItemLabel} numberOfLines={1}>{c.label}</Text>
-                </View>
-              ))}
-            </ScrollView>
+            <View style={styles.ootdSlideshow}>
+              <TouchableOpacity
+                style={styles.slideArrow}
+                onPress={() => setPhotoIndex(i => Math.max(0, i - 1))}>
+                <Text style={styles.slideArrowText}>‹</Text>
+              </TouchableOpacity>
+              <Image
+                source={{ uri: todayClothes[photoIndex % todayClothes.length].uri }}
+                style={styles.ootdImage}
+              />
+              <TouchableOpacity
+                style={styles.slideArrow}
+                onPress={() => setPhotoIndex(i => Math.min(todayClothes.length - 1, i + 1))}>
+                <Text style={styles.slideArrowText}>›</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
-            <View style={styles.otdEmpty}>
-              <Text style={styles.otdEmptyEmoji}>👗</Text>
-              <Text style={styles.otdEmptyText}>Tap to log what you're wearing today</Text>
+            <View style={styles.ootdEmpty}>
+              <Text style={styles.ootdEmptyText}>Tap to log today's outfit</Text>
             </View>
           )}
         </TouchableOpacity>
 
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statNum}>{items.length}</Text>
-            <Text style={styles.statLabel}>Total items</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNum}>{items.filter(i => i.wornCount === 0).length}</Text>
-            <Text style={styles.statLabel}>Never worn</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNum}>{items.reduce((a, b) => a + b.wornCount, 0)}</Text>
-            <Text style={styles.statLabel}>Total wears</Text>
-          </View>
-        </View>
-
-        {items.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Most worn</Text>
-            {[...items].sort((a, b) => b.wornCount - a.wornCount).slice(0, 3).map(item => (
-              <View key={item.id} style={styles.topItem}>
-                <Image source={{ uri: item.uri }} style={styles.topThumb} />
-                <View style={styles.topInfo}>
-                  <Text style={styles.topLabel}>{item.label}</Text>
-                  {item.brand ? <Text style={styles.topBrand}>{item.brand}</Text> : null}
-                </View>
-                <Text style={styles.topCount}>{item.wornCount}×</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {items.filter(i => i.wornCount === 0).length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Never worn</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {items.filter(i => i.wornCount === 0).map(item => (
-                <View key={item.id} style={styles.neverItem}>
-                  <Image source={{ uri: item.uri }} style={styles.neverThumb} />
-                  <Text style={styles.neverLabel} numberOfLines={1}>{item.label}</Text>
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-        )}
       </ScrollView>
 
       <Modal visible={otdModalVisible} animationType="slide" transparent>
@@ -230,10 +194,10 @@ export default function HomeScreen() {
           <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>Today's outfit</Text>
             {weather && (
-              <Text style={styles.weatherHint}>{weather.emoji} {weather.temp}°F · {weather.desc}</Text>
+              <Text style={styles.weatherHint}>{weather.emoji} {weather.temp}° · {weather.desc}</Text>
             )}
             <Text style={styles.sheetLabel}>Pick what you're wearing</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.otdPicker}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.picker} keyboardShouldPersistTaps="handled">
               {items.map(c => (
                 <TouchableOpacity
                   key={c.id}
@@ -267,52 +231,74 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  scroll: { padding: 16, gap: 16 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  greeting: { fontSize: 24, fontWeight: '500', color: '#333' },
-  location: { fontSize: 13, color: '#aaa', marginTop: 2 },
-  weatherBox: { alignItems: 'center' },
-  weatherEmoji: { fontSize: 32 },
-  weatherTemp: { fontSize: 18, fontWeight: '500', color: '#333' },
-  weatherDesc: { fontSize: 11, color: '#aaa' },
-  otdCard: { borderWidth: 0.5, borderColor: '#e0e0e0', borderRadius: 16, padding: 16, backgroundColor: '#FAFAFA' },
-  otdCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  otdCardTitle: { fontSize: 15, fontWeight: '500', color: '#333' },
-  otdCardEdit: { fontSize: 13, color: '#534AB7' },
-  otdScroll: { maxHeight: 110 },
-  otdItem: { alignItems: 'center', marginRight: 12, width: 70 },
-  otdImage: { width: 64, height: 80, borderRadius: 10 },
-  otdItemLabel: { fontSize: 10, color: '#666', marginTop: 4, textAlign: 'center' },
-  otdEmpty: { alignItems: 'center', paddingVertical: 20, gap: 8 },
-  otdEmptyEmoji: { fontSize: 28 },
-  otdEmptyText: { fontSize: 13, color: '#aaa', textAlign: 'center' },
-  statsRow: { flexDirection: 'row', gap: 10 },
-  statCard: { flex: 1, backgroundColor: '#f8f8f8', borderRadius: 12, padding: 14, alignItems: 'center' },
-  statNum: { fontSize: 24, fontWeight: '500', color: '#534AB7' },
-  statLabel: { fontSize: 11, color: '#aaa', marginTop: 2 },
-  section: { gap: 10 },
-  sectionTitle: { fontSize: 15, fontWeight: '500', color: '#333' },
-  topItem: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 12, borderWidth: 0.5, borderColor: '#f0f0f0' },
-  topThumb: { width: 44, height: 56, borderRadius: 8 },
-  topInfo: { flex: 1 },
-  topLabel: { fontSize: 13, fontWeight: '500' },
-  topBrand: { fontSize: 11, color: '#aaa', marginTop: 2 },
-  topCount: { fontSize: 14, color: '#534AB7', fontWeight: '500' },
-  neverItem: { alignItems: 'center', marginRight: 10, width: 70 },
-  neverThumb: { width: 64, height: 80, borderRadius: 10, borderWidth: 1, borderColor: '#E24B4A' },
-  neverLabel: { fontSize: 10, color: '#aaa', marginTop: 4, textAlign: 'center' },
+  scroll: { padding: 20, gap: 16 },
+  greetingPill: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 50,
+    paddingVertical: 18,
+    paddingHorizontal: 28,
+    alignSelf: 'center',
+  },
+  greetingText: {
+    color: '#fff',
+    fontSize: 28,
+    fontFamily: 'PlayfairDisplay_600SemiBold',
+    letterSpacing: -0.5,
+  },
+  weatherText: {
+    fontSize: 16,
+    color: '#333',
+    textAlign: 'center',
+    marginTop: 4,
+    fontFamily: 'PlayfairDisplay_400Regular',
+  },
+  ootdTitle: {
+    fontSize: 32,
+    fontFamily: 'PlayfairDisplay_600SemiBold',
+    fontWeight: '500',
+    color: '#1a1a1a',
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+  ootdCard: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    overflow: 'hidden',
+    minHeight: 340,
+    justifyContent: 'center',
+  },
+  ootdSlideshow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  slideArrow: { padding: 10 },
+  slideArrowText: { color: '#fff', fontSize: 32 },
+  ootdImage: {
+    flex: 1,
+    height: 280,
+    borderRadius: 10,
+    marginHorizontal: 8,
+  },
+  ootdEmpty: {
+    height: 300,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ootdEmptyText: { color: '#888', fontSize: 15 },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 },
   sheetTitle: { fontSize: 18, fontWeight: '500', marginBottom: 8, textAlign: 'center' },
   weatherHint: { textAlign: 'center', fontSize: 13, color: '#888', marginBottom: 12 },
   sheetLabel: { fontSize: 13, color: '#888', marginBottom: 8 },
-  otdPicker: { marginBottom: 20, maxHeight: 130 },
+  picker: { marginBottom: 20, maxHeight: 130 },
   pickItem: { width: 70, marginRight: 10, alignItems: 'center', position: 'relative' },
   pickImage: { width: 64, height: 80, borderRadius: 8, backgroundColor: '#f0f0f0' },
   checkOverlay: { position: 'absolute', top: 0, left: 0, width: 64, height: 80, borderRadius: 8, backgroundColor: 'rgba(83,74,183,0.5)', alignItems: 'center', justifyContent: 'center' },
   checkMark: { color: '#fff', fontSize: 24, fontWeight: '500' },
   pickLabel: { fontSize: 10, color: '#666', marginTop: 4, textAlign: 'center' },
-  saveBtn: { backgroundColor: '#534AB7', borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 10 },
+  saveBtn: { backgroundColor: '#1a1a1a', borderRadius: 50, padding: 16, alignItems: 'center', marginBottom: 10 },
   saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '500' },
   cancelBtn: { alignItems: 'center', padding: 10 },
   cancelBtnText: { color: '#888', fontSize: 14 },

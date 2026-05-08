@@ -1,45 +1,52 @@
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useFonts, PlayfairDisplay_600SemiBold } from '@expo-google-fonts/playfair-display';
 
-const OPTIONS = [
-  { label: '🧺 Laundry tracker', route: '/laundry', sub: 'Track clean and dirty items' },
-  { label: '🧳 Trip packing', route: '/pack', sub: 'Pack from your closet' },
-  { label: '👔 My closets', route: '/closets', sub: 'Manage multiple closets' },
-  { label: '📈 Wear tracker', route: '/tracker', sub: 'See your most worn items' },
+const FEATURES = [
+  { label: 'Calendar', route: '/calendar' },
+  { label: 'Wishlist', route: '/wishlist' },
+  { label: 'Trip Packing', route: '/pack' },
+  { label: 'Wear Tracker', route: '/tracker' },
+  { label: 'Monthly Recap', route: '/recap' },
+  { label: 'Laundry Status', route: '/laundry' },
 ];
 
 export default function MoreScreen() {
+  const [fontsLoaded] = useFonts({ PlayfairDisplay_600SemiBold });
+  if (!fontsLoaded) return null;
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>More</Text>
+        <Text style={styles.title}>Additional Features</Text>
       </View>
-      <ScrollView contentContainerStyle={styles.list}>
-        {OPTIONS.map(o => (
+      <View style={styles.grid}>
+        {FEATURES.map(f => (
           <TouchableOpacity
-            key={o.route}
+            key={f.route}
             style={styles.card}
-            onPress={() => router.push(o.route as any)}>
-            <View style={styles.info}>
-              <Text style={styles.label}>{o.label}</Text>
-              <Text style={styles.sub}>{o.sub}</Text>
-            </View>
-            <Text style={styles.arrow}>›</Text>
+            onPress={() => router.push(f.route as any)}>
+            <Text style={styles.cardLabel}>{f.label}</Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  header: { padding: 16 },
-  title: { fontSize: 22, fontWeight: '500' },
-  list: { padding: 16, gap: 10 },
-  card: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 14, borderWidth: 0.5, borderColor: '#e0e0e0' },
-  info: { flex: 1 },
-  label: { fontSize: 15, fontWeight: '500', color: '#333' },
-  sub: { fontSize: 12, color: '#aaa', marginTop: 2 },
-  arrow: { fontSize: 20, color: '#ccc' },
+  header: { padding: 20, paddingBottom: 10 },
+  title: { fontSize: 32, fontFamily: 'PlayfairDisplay_600SemiBold', color: '#1a1a1a' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', padding: 16, gap: 16, justifyContent: 'center', alignItems: 'center' },
+  card: {
+    width: '28%',
+    aspectRatio: 1,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
+  },
+  cardLabel: { color: '#fff', fontSize: 13, textAlign: 'center', fontWeight: '500' },
 });
