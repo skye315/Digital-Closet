@@ -1,10 +1,15 @@
-import { useState, useEffect } from 'react';
-import {
-  View, Text, StyleSheet, SafeAreaView, ScrollView,
-  TouchableOpacity, Image
-} from 'react-native';
+import { PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold, useFonts } from '@expo-google-fonts/playfair-display';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold } from '@expo-google-fonts/playfair-display';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Image,
+  SafeAreaView, ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
 
 type ClothingItem = {
   id: string;
@@ -16,51 +21,78 @@ type ClothingItem = {
   wornCount: number;
 };
 
+type WearLog = {
+  itemId: string;
+  date: string; // format: 'YYYY-MM'
+};
+
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const CATEGORIES = ['Tops', 'Bottoms', 'Shoes', 'Outerwear', 'Accessories'];
 
 export default function RecapScreen() {
   const [fontsLoaded] = useFonts({ PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold });
   const [items, setItems] = useState<ClothingItem[]>([]);
+  const [wearLogs, setWearLogs] = useState<WearLog[]>([]);
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
-  useEffect(() => {
-    const load = async () => {
-      const saved = await AsyncStorage.getItem('closet_items');
-      if (saved) setItems(JSON.parse(saved));
-    };
-    load();
-  }, []);
+  const loadData = async () => {
+    const saved = await AsyncStorage.getItem('closet_items');
+    const logs = await AsyncStorage.getItem('wear_logs');
+    if (saved) setItems(JSON.parse(saved));
+    if (logs) setWearLogs(JSON.parse(logs));
+  };
+
+  useEffect(() => { loadData(); }, []);
+  useFocusEffect(useCallback(() => { loadData(); }, []));
 
   const prevMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
   const nextMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
 
-  const sorted = [...items].sort((a, b) => b.wornCount - a.wornCount);
-  const topItems = sorted.slice(0, 3);
-  const neverWorn = items.filter(i => i.wornCount === 0);
-  const totalWears = items.reduce((a, b) => a + b.wornCount, 0);
+  const monthKey = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`;
+  const monthLogs = wearLogs.filter(l => l.date === monthKey);
+
+  // Count wears per item for this month
+  const monthWearCounts: Record<string, number> = {};
+  monthLogs.forEach(l => {
+    monthWearCounts[l.itemId] = (monthWearCounts[l.itemId] || 0) + 1;
+  });
+
+  const totalWears = monthLogs.length;
+  const wornItemIds = new Set(monthLogs.map(l => l.itemId));
+  const neverWorn = items.filter(i => !wornItemIds.has(i.id));
+
+  const topItems = items
+    .filter(i => monthWearCounts[i.id] > 0)
+    .sort((a, b) => (monthWearCounts[b.id] || 0) - (monthWearCounts[a.id] || 0))
+    .slice(0, 3);
+
+  const maxWears = topItems[0] ? (monthWearCounts[topItems[0].id] || 0) : 1;
 
   const topBrands = Object.entries(
     items.reduce((acc, i) => {
-      if (i.brand) acc[i.brand] = (acc[i.brand] || 0) + i.wornCount;
+      if (i.brand && monthWearCounts[i.id]) {
+        acc[i.brand] = (acc[i.brand] || 0) + (monthWearCounts[i.id] || 0);
+      }
       return acc;
     }, {} as Record<string, number>)
   ).sort((a, b) => b[1] - a[1]).slice(0, 3);
 
   const topColors = Object.entries(
     items.reduce((acc, i) => {
-      if (i.colors?.length > 0) {
-        i.colors.forEach(c => { acc[c] = (acc[c] || 0) + i.wornCount; });
+      if (i.colors?.length > 0 && monthWearCounts[i.id]) {
+        i.colors.forEach(c => {
+          acc[c] = (acc[c] || 0) + (monthWearCounts[i.id] || 0);
+        });
       }
       return acc;
     }, {} as Record<string, number>)
   ).sort((a, b) => b[1] - a[1]).slice(0, 3);
 
-  const categoryBreakdown = CATEGORIES.map(cat => ({
-    cat,
-    count: items.filter(i => i.category === cat).length,
-    wears: items.filter(i => i.category === cat).reduce((a, b) => a + b.wornCount, 0),
-  })).filter(c => c.count > 0);
+  const categoryBreakdown = CATEGORIES.map(cat => {
+    const catItems = items.filter(i => i.category === cat);
+    const wears = catItems.reduce((a, i) => a + (monthWearCounts[i.id] || 0), 0);
+    return { cat, count: catItems.length, wears };
+  }).filter(c => c.count > 0);
 
   const maxCatWears = Math.max(...categoryBreakdown.map(c => c.wears), 1);
 
@@ -77,7 +109,7 @@ export default function RecapScreen() {
             <Text style={styles.navBtnText}>{'<'}</Text>
           </TouchableOpacity>
           <View style={styles.monthPill}>
-            <Text style={styles.monthText}>{MONTHS[currentMonth.getMonth()]}</Text>
+            <Text style={styles.monthText}>{MONTHS[currentMonth.getMonth()]} {currentMonth.getFullYear()}</Text>
           </View>
           <TouchableOpacity onPress={nextMonth} style={styles.navBtn}>
             <Text style={styles.navBtnText}>{'>'}</Text>
@@ -99,6 +131,31 @@ export default function RecapScreen() {
           </View>
         </View>
 
+        {topItems.length > 0 ? (
+          <View style={styles.darkPanelFull}>
+            <Text style={styles.panelTitle}>Most Worn This Month</Text>
+            {topItems.map((item, index) => (
+              <View key={item.id} style={styles.itemRow}>
+                <Text style={styles.rank}>#{index + 1}</Text>
+                <Image source={{ uri: item.uri }} style={styles.thumb} />
+                <View style={styles.itemInfo}>
+                  <Text style={styles.itemLabel}>{item.label}</Text>
+                  {item.brand ? <Text style={styles.itemBrand}>{item.brand}</Text> : null}
+                  <View style={styles.barBg}>
+                    <View style={[styles.bar, { width: `${((monthWearCounts[item.id] || 0) / maxWears) * 100}%` }]} />
+                  </View>
+                </View>
+                <Text style={styles.wearCount}>{monthWearCounts[item.id] || 0}×</Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.darkPanelFull}>
+            <Text style={styles.panelTitle}>Most Worn This Month</Text>
+            <Text style={styles.panelEmpty}>No outfits logged this month yet</Text>
+          </View>
+        )}
+
         <View style={styles.twoCol}>
           <View style={styles.darkPanel}>
             <Text style={styles.panelTitle}>Top Brands</Text>
@@ -116,27 +173,9 @@ export default function RecapScreen() {
           </View>
         </View>
 
-        {topItems.length > 0 && (
-          <View style={styles.darkPanelFull}>
-            <Text style={styles.panelTitle}>Most Worn Items</Text>
-            <View style={styles.mostWornGrid}>
-              {topItems.map(item => (
-                <View key={item.id} style={styles.mostWornItem}>
-                  {item.uri ? (
-                    <Image source={{ uri: item.uri }} style={styles.mostWornImage} />
-                  ) : (
-                    <View style={styles.mostWornImage} />
-                  )}
-                  <Text style={styles.mostWornCount}>{item.wornCount}×</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
         {neverWorn.length > 0 && (
           <View style={styles.darkPanelFull}>
-            <Text style={styles.panelTitle}>Never Worn</Text>
+            <Text style={styles.panelTitle}>Never Worn This Month</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {neverWorn.map(item => (
                 <View key={item.id} style={styles.neverItem}>
@@ -192,10 +231,15 @@ const styles = StyleSheet.create({
   panelTitle: { color: '#fff', fontSize: 16, fontFamily: 'PlayfairDisplay_600SemiBold', textAlign: 'center', marginBottom: 4 },
   panelEmpty: { color: '#666', fontSize: 13, textAlign: 'center' },
   panelItem: { color: '#fff', fontSize: 14, fontFamily: 'PlayfairDisplay_400Regular' },
-  mostWornGrid: { flexDirection: 'row', gap: 8 },
-  mostWornItem: { flex: 1, alignItems: 'center', gap: 6 },
-  mostWornImage: { width: '100%', aspectRatio: 3/4, borderRadius: 8, backgroundColor: '#333' },
-  mostWornCount: { color: '#fff', fontSize: 12, fontWeight: '500' },
+  itemRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rank: { fontSize: 13, color: '#aaa', width: 24 },
+  thumb: { width: 44, height: 56, borderRadius: 8 },
+  itemInfo: { flex: 1 },
+  itemLabel: { fontSize: 13, fontWeight: '500', color: '#fff' },
+  itemBrand: { fontSize: 11, color: '#aaa', marginTop: 1 },
+  barBg: { height: 4, backgroundColor: '#333', borderRadius: 2, marginTop: 5 },
+  bar: { height: 4, backgroundColor: '#fff', borderRadius: 2 },
+  wearCount: { fontSize: 13, color: '#fff', fontWeight: '500', width: 28, textAlign: 'right' },
   neverItem: { alignItems: 'center', marginRight: 12, width: 72 },
   neverImage: { width: 64, height: 80, borderRadius: 8, backgroundColor: '#333', borderWidth: 1.5, borderColor: '#E24B4A' },
   neverLabel: { color: '#aaa', fontSize: 10, marginTop: 4, textAlign: 'center' },

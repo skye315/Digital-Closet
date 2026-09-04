@@ -1,13 +1,22 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  View, Text, FlatList, TouchableOpacity,
-  Image, StyleSheet, SafeAreaView, Alert,
-  Modal, TextInput, ScrollView
-} from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold, useFonts } from '@expo-google-fonts/playfair-display';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold } from '@expo-google-fonts/playfair-display';
-import { useFocusEffect } from '@react-navigation/native';
+import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Alert,
+  FlatList,
+  Image,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
 
 type ClothingItem = {
   id: string;
@@ -126,11 +135,16 @@ export default function ClosetScreen() {
     ]);
   };
 
-  const saveItem = () => {
+  const saveItem = async () => {
     if (!label.trim()) { Alert.alert('Name required', 'Please give this item a name.'); return; }
+
+    const fileName = `${Date.now()}.jpg`;
+    const permanentUri = `${FileSystem.documentDirectory}${fileName}`;
+    await FileSystem.copyAsync({ from: pendingUri, to: permanentUri });
+
     const newItem: ClothingItem = {
       id: Date.now().toString(),
-      uri: pendingUri,
+      uri: permanentUri,
       label: label.trim(),
       brand: brand.trim(),
       category: selectedCategory,
@@ -179,9 +193,7 @@ export default function ClosetScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerRow}>
-        <View style={styles.title}>
-          <Text style={styles.title}>My Closet</Text>
-        </View>
+        <Text style={styles.title}>My Closet</Text>
         <TouchableOpacity style={styles.addBtn} onPress={pickImage}>
           <Text style={styles.addBtnText}>+</Text>
         </TouchableOpacity>
@@ -257,7 +269,6 @@ export default function ClosetScreen() {
         }
       />
 
-      {/* Detail Modal */}
       <Modal visible={detailModalVisible} animationType="slide" transparent>
         <View style={styles.detailOverlay}>
           <View style={styles.detailSheet}>
@@ -329,7 +340,6 @@ export default function ClosetScreen() {
         </View>
       </Modal>
 
-      {/* Edit Modal */}
       <Modal visible={editModalVisible} animationType="slide" transparent>
         <View style={styles.overlay}>
           <ScrollView scrollEnabled={false} keyboardShouldPersistTaps="handled">
@@ -375,7 +385,6 @@ export default function ClosetScreen() {
         </View>
       </Modal>
 
-      {/* Add Item Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.overlay}>
           <ScrollView scrollEnabled={false} keyboardShouldPersistTaps="handled">

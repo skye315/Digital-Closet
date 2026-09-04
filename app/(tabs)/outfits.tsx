@@ -1,11 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  View, Text, StyleSheet, SafeAreaView, TouchableOpacity,
-  FlatList, Image, Modal, TextInput, Alert, ScrollView
-} from 'react-native';
+import { PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold, useFonts } from '@expo-google-fonts/playfair-display';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold } from '@expo-google-fonts/playfair-display';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Alert,
+  FlatList, Image, Modal,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
 
 type ClothingItem = { id: string; uri: string; label: string; brand: string; category: string; colors: string[]; wornCount: number; closetId: string; };
 type Outfit = { id: string; name: string; tag: string; itemIds: string[]; wornCount: number; lastWorn?: string; };

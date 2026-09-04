@@ -1,13 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  View, Text, StyleSheet, SafeAreaView, TouchableOpacity,
-  Image, Modal, ScrollView, Alert
-} from 'react-native';
-import * as Location from 'expo-location';
+import { PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold, useFonts } from '@expo-google-fonts/playfair-display';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_600SemiBold } from '@expo-google-fonts/playfair-display';
-import { router } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import * as Location from 'expo-location';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Alert,
+  Image, Modal,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
 
 type ClothingItem = {
   id: string;
@@ -198,6 +203,13 @@ export default function HomeScreen() {
       updatedEntries.push({ date: calDateStr, groups: [...currentGroups, selectedIds] });
     }
     await AsyncStorage.setItem('calendar_entries', JSON.stringify(updatedEntries));
+
+    // Save wear logs with timestamp
+    const wearLogsRaw = await AsyncStorage.getItem('wear_logs');
+    const wearLogs = wearLogsRaw ? JSON.parse(wearLogsRaw) : [];
+    const monthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const newLogs = selectedIds.map(id => ({ itemId: id, date: monthKey }));
+    await AsyncStorage.setItem('wear_logs', JSON.stringify([...wearLogs, ...newLogs]));
 
     setOtdModalVisible(false);
     setPhotoIndex(0);
